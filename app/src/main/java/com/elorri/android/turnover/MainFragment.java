@@ -1,5 +1,6 @@
 package com.elorri.android.turnover;
 
+import android.content.Context;
 import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -9,11 +10,13 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.TextView;
 
 import com.github.mikephil.charting.charts.CombinedChart;
 import com.github.mikephil.charting.components.AxisBase;
 import com.github.mikephil.charting.components.Legend;
 import com.github.mikephil.charting.components.LegendEntry;
+import com.github.mikephil.charting.components.MarkerView;
 import com.github.mikephil.charting.components.XAxis;
 import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.BarData;
@@ -27,9 +30,12 @@ import com.github.mikephil.charting.formatter.IAxisValueFormatter;
 import com.github.mikephil.charting.formatter.IValueFormatter;
 import com.github.mikephil.charting.highlight.Highlight;
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener;
+import com.github.mikephil.charting.utils.MPPointF;
 import com.github.mikephil.charting.utils.ViewPortHandler;
 
+import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 
 import static java.lang.Float.NaN;
@@ -134,6 +140,7 @@ public class MainFragment extends Fragment {
         // Y droite
         mChart.getAxisRight().setEnabled(false);
 
+        mChart.setMarker(new TurnoverMarkerView(getContext(), R.layout.barview));
 
         new TotalTurnOverAsyncTask().execute();
 
@@ -187,7 +194,7 @@ public class MainFragment extends Fragment {
             aTotalTurnoverPipeline6.put("period", "2018-03");
             aTotalTurnoverPipeline6.put("turnover_ht", 110000d);
             aTotalTurnoverPipeline6.put("turnover_pipeline_ht", 10000d);
-            aTotalTurnoverPipeline6.put("goal_turnover_ht", 15000d);
+            aTotalTurnoverPipeline6.put("goal_turnover_ht", 200000d);
             totalTurnoverPipeline.add(aTotalTurnoverPipeline6);
 
             return totalTurnoverPipeline;
@@ -203,25 +210,22 @@ public class MainFragment extends Fragment {
             CombinedData combinedData = new CombinedData();
             BarData barData = buildBars(barsContentValues);
             LineData lineData = buildLine(barsContentValues);
+            //LineData lineData = generateLineData();
             combinedData.setData(barData);
             combinedData.setData(lineData);
 
 
-//            LinkedList<Highlight> hilights = new LinkedList<>();
-//            Integer count = barData.getEntryCount();
-//            Highlight[] highs = new Highlight[0];
-//            if (count > 0) {
-//                barData.getDataSetByIndex(0).setHighlightEnabled(true);
-//                for (int i = 0; i < count; i++) {
-//                    Entry entry = barData.getDataSetByIndex(0).getEntryForIndex(i);
-//                    Highlight h = new Highlight(entry.getX(), 0, 3);
-//                    //Highlight h = new Highlight(entry.getX(), entry.getY(), 5f, 5f, 0, 3, left.getAxisDependency());
-//                    h.setDataIndex(combinedData.getDataIndex(barData));
-//                    hilights.add(h);
-//                }
-//
-//                highs = hilights.toArray(new Highlight[hilights.size()]);
-//            }
+            LinkedList<Highlight> highlights = new LinkedList<>();
+            Integer count = barData.getEntryCount();
+            if (count > 0) {
+                barData.getDataSetByIndex(0).setHighlightEnabled(true);
+                for (int i = 0; i < count; i++) {
+                    Entry entry = barData.getDataSetByIndex(i).getEntryForIndex(0);
+                    Highlight highlight = new Highlight(entry.getX(), i, 0);
+                    highlight.setDataIndex(combinedData.getDataIndex(barData));
+                    highlights.add(highlight);
+                }
+            }
 
             mChart.getXAxis().setAxisMaximum(combinedData.getXMax() + 0.5f);
             mChart.getXAxis().setLabelCount(combinedData.getEntryCount());
@@ -229,8 +233,17 @@ public class MainFragment extends Fragment {
 
             mChart.clear();
             mChart.setData(combinedData);
-//            mChart.highlightValues(highs);
+            mChart.highlightValues(toArray(highlights));
+            mChart.invalidate();
         }
+    }
+
+    private Highlight[] toArray(LinkedList<Highlight> highlights) {
+        Highlight[] array = new Highlight[highlights.size()];
+        for (int i = 0; i < highlights.size(); i++) {
+            array[i] = highlights.get(i);
+        }
+        return array;
     }
 
     private LineData buildLine(List<YContentValues> barsContentValues) {
@@ -240,6 +253,9 @@ public class MainFragment extends Fragment {
         lineData.setValueFormatter(new IValueFormatter() {
             @Override
             public String getFormattedValue(float value, Entry entry, int dataSetIndex, ViewPortHandler viewPortHandler) {
+                Log.e("Turnover", Thread.currentThread().getStackTrace()[2] + "");
+                DecimalFormat format = new DecimalFormat("###,###,###,##0.00");
+                return format.format(value) + "€";
 //Appelé comme ça
                 //(" €", 2, 1)
 
@@ -265,25 +281,25 @@ public class MainFragment extends Fragment {
 //                    return mFormat.format(value) + mAppendix;
 //                }
 //                return "";
-                Log.e("Turnover", Thread.currentThread().getStackTrace()[2] + "");
-                return "";
+
             }
         });
         lineData.setHighlightEnabled(false);
 
-        int position = 0;
-        for (YContentValues barContentValue : barsContentValues) {
-            List<Entry> lineEntries = buildLinesEntries(position, barContentValue);
-            LineDataSet lineDataSet = buildLineDataSet(lineEntries);
-            lineData.addDataSet(lineDataSet);
-            position++;
-        }
+
+        List<Entry> lineEntries = buildLinesEntries(barsContentValues);
+        LineDataSet lineDataSet = buildLineDataSet(lineEntries);
+        lineData.addDataSet(lineDataSet);
         return lineData;
     }
 
-    private List<Entry> buildLinesEntries(int position, YContentValues barContentValue) {
+    private List<Entry> buildLinesEntries(List<YContentValues> barsContentValues) {
         ArrayList<Entry> entries = new ArrayList<>();
-        entries.add(new Entry(position, Float.valueOf(barContentValue.getAsString("goal_turnover_ht"))));
+        int position = 0;
+        for (YContentValues barContentValue : barsContentValues) {
+            entries.add(new Entry(position, Float.valueOf(barContentValue.getAsString("goal_turnover_ht"))));
+            position++;
+        }
         return entries;
     }
 
@@ -368,4 +384,71 @@ public class MainFragment extends Fragment {
         dataSet.setHighLightAlpha(0); //Est-ce utile ? essayer avec 255 pour voir
         return dataSet;
     }
+
+
+    /**
+     * Genre d'adapter (le constructeur fait office de createView et le refreshContent de
+     * bindView ) permet de customiser la vue qui est superposée à
+     * chaque marker (cad barre).
+     * Ici au lieu de mettre le montant de chaque total (turnover et pipeline), ce qui est mis
+     * par défaut, on va mettre le total (turnover+pipeline) et la diff par rapport à l'année
+     * précédente.
+     */
+    public static class TurnoverMarkerView extends MarkerView {
+
+        private final TextView total_val;
+        private final TextView percent_val;
+
+        public TurnoverMarkerView(Context context, int layoutResource) {
+            super(context, layoutResource);
+            total_val = (TextView) findViewById(R.id.total_val);
+            percent_val = (TextView) findViewById(R.id.percent_val);
+            Log.e("Turnover", Thread.currentThread().getStackTrace()[2] + "");
+        }
+
+        @Override
+        public void refreshContent(Entry e, Highlight highlight) {
+            Log.e("Turnover", Thread.currentThread().getStackTrace()[2] + "");
+            total_val.setText("Hello");
+            percent_val.setText("it's me");
+            super.refreshContent(e, highlight);
+        }
+
+        @Override
+        public MPPointF getOffset() {
+            return new MPPointF(-(getWidth() / 2), -getHeight());
+        }
+
+    }
+
+    private LineData generateLineData() {
+
+        LineData d = new LineData();
+
+        ArrayList<Entry> entries = new ArrayList<Entry>();
+
+        for (int index = 0; index < 5; index++)
+            entries.add(new Entry(index + 0.5f, getRandom(200, 10000)));
+
+        LineDataSet set = new LineDataSet(entries, "Line DataSet");
+        //set.setColor(Color.rgb(240, 238, 70));
+        set.setLineWidth(0f);
+        set.setCircleColor(Color.rgb(240, 238, 70));
+        set.setCircleRadius(5f);
+        set.setFillColor(Color.rgb(240, 238, 70));
+        set.setMode(LineDataSet.Mode.CUBIC_BEZIER);
+        set.setDrawValues(true);
+        set.setValueTextSize(10f);
+        set.setValueTextColor(Color.rgb(240, 238, 70));
+
+        set.setAxisDependency(YAxis.AxisDependency.LEFT);
+        d.addDataSet(set);
+
+        return d;
+    }
+
+    protected float getRandom(float range, float startsfrom) {
+        return (float) (Math.random() * range) + startsfrom;
+    }
+
 }
